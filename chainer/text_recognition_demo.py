@@ -15,7 +15,7 @@ import numpy as np
 from PIL import Image
 from chainer import configuration
 
-from utils.datatypes import Size
+from .utils.datatypes import Size
 
 
 def get_class_and_module(log_data):
