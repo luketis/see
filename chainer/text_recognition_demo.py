@@ -125,6 +125,58 @@ def extract_bbox(bbox, image_size, target_shape, xp):
     return top_left, bottom_right
 
 
+def rec_text(model_dir, snapshot_name, image_path, char_map, log_name='log',
+             blank_symbol=0, gpu=0, dropout_ratio=0.5, timesteps=23):
+    # open log and extract meta information
+    with open(os.path.join(model_dir, log_name)) as the_log:
+        log_data = json.load(the_log)[0]
+
+    target_shape = Size._make(log_data['target_size'])
+    image_size = Size._make(log_data['image_size'])
+
+    xp = chainer.cuda.cupy if gpu >= 0 else np
+    args = (model_dir, gpu, dropout_ratio, timesteps)
+    network = create_network(args, log_data)
+
+    # load weights
+    with np.load(os.path.join(model_dir, snapshot_name)) as f:
+        chainer.serializers.NpzDeserializer(f).load(network)
+
+    # load char map
+    with open(char_map) as the_map:
+        char_map = json.load(the_map)
+
+    # load image
+    image = load_image(image_path, xp, image_size)
+    with configuration.using_config('train', False):
+        predictions, crops, grids = network(image[xp.newaxis, ...])
+
+    # extract class scores for each word
+    words = OrderedDict({})
+
+    predictions = F.concat([F.expand_dims(prediction, axis=0) for prediction in predictions], axis=0)
+
+    classification = F.softmax(predictions, axis=2)
+    classification = classification.data
+    classification = xp.argmax(classification, axis=2)
+    classification = xp.transpose(classification, (1, 0))
+
+    word = strip_prediction(classification, xp, blank_symbol)[0]
+
+    word = "".join(map(lambda x: chr(char_map[str(x)]), word))
+
+    bboxes = []
+    for bbox in grids[0]:
+        bbox = extract_bbox(bbox, image_size, target_shape, xp)
+        bboxes.append(OrderedDict({
+            'top_left': bbox[0],
+            'bottom_right': bbox[1]
+        }))
+    words[word] = bboxes
+
+    return words
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Tool that loads model and predicts on a given image")
     parser.add_argument("model_dir", help="path to directory where model is saved")
@@ -143,54 +195,8 @@ if __name__ == "__main__":
     # max number of characters per word
     args.num_labels = 1
 
-    # open log and extract meta information
-    with open(os.path.join(args.model_dir, args.log_name)) as the_log:
-        log_data = json.load(the_log)[0]
-
-    target_shape = Size._make(log_data['target_size'])
-    image_size = Size._make(log_data['image_size'])
-
-    xp = chainer.cuda.cupy if args.gpu >= 0 else np
-    network = create_network(args, log_data)
-
-    # load weights
-    with np.load(os.path.join(args.model_dir, args.snapshot_name)) as f:
-        chainer.serializers.NpzDeserializer(f).load(network)
-
-    # load char map
-    with open(args.char_map) as the_map:
-        char_map = json.load(the_map)
-
-    # load image
-    image = load_image(args.image_path, xp, image_size)
-    with configuration.using_config('train', False):
-        predictions, crops, grids = network(image[xp.newaxis, ...])
-
-    # extract class scores for each word
-    words = OrderedDict({})
-
-    predictions = F.concat([F.expand_dims(prediction, axis=0) for prediction in predictions], axis=0)
-
-    classification = F.softmax(predictions, axis=2)
-    classification = classification.data
-    classification = xp.argmax(classification, axis=2)
-    classification = xp.transpose(classification, (1, 0))
-
-    word = strip_prediction(classification, xp, args.blank_symbol)[0]
-
-    word = "".join(map(lambda x: chr(char_map[str(x)]), word))
-
-    bboxes = []
-    for bbox in grids[0]:
-        bbox = extract_bbox(bbox, image_size, target_shape, xp)
-        bboxes.append(OrderedDict({
-            'top_left': bbox[0],
-            'bottom_right': bbox[1]
-        }))
-    words[word] = bboxes
+    words = rec_text(args.model_dir, args.snapshot_name, args.image_path,
+                     args.char_map, log_name=args.log_name,
+                     blank_symbol=args.blank_symbol, gpu=args.gpu, dropout_ratio=args.dropout_ratio, timesteps=args.timesteps)
 
     pprint(words)
-
-
-
-
