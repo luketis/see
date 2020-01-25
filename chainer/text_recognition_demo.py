@@ -135,7 +135,8 @@ def rec_text(model_dir, snapshot_name, image_path, char_map, log_name='log',
     image_size = Size._make(log_data['image_size'])
 
     xp = chainer.cuda.cupy if gpu >= 0 else np
-    args = (model_dir, gpu, dropout_ratio, timesteps)
+    Args = namedtuple('Args', ['model_dir', 'gpu', 'dropout_ratio', 'timesteps'])
+    args = Args(model_dir, gpu, dropout_ratio, timesteps)
     network = create_network(args, log_data)
 
     # load weights
