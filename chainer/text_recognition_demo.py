@@ -1,6 +1,6 @@
 import argparse
 import importlib
-
+from collections import namedtuple
 import os
 
 import json
