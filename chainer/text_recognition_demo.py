@@ -61,7 +61,7 @@ def build_fusion_net(fusion_net_class, localization_net, recognition_net):
     return fusion_net_class(localization_net, recognition_net)
 
 
-def create_network(args, log_data):
+def create_network(args, log_data, target_shape):
     # Step 1: build network
     localization_net_class_name, localization_module_name = get_class_and_module(log_data['localization_net'])
     module = load_module(os.path.abspath(os.path.join(args.model_dir, localization_module_name)))
@@ -137,7 +137,7 @@ def rec_text(model_dir, snapshot_name, image_path, char_map, log_name='log',
     xp = chainer.cuda.cupy if gpu >= 0 else np
     Args = namedtuple('Args', ['model_dir', 'gpu', 'dropout_ratio', 'timesteps'])
     args = Args(model_dir, gpu, dropout_ratio, timesteps)
-    network = create_network(args, log_data)
+    network = create_network(args, log_data, target_shape)
 
     # load weights
     with np.load(os.path.join(model_dir, snapshot_name)) as f:
